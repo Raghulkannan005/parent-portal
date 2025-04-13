@@ -60,8 +60,8 @@ const storage = {
   ]
 };
 
-// Set this to false to ensure real API is used
-export const useMockApi = false;
+// Set this to true to use mock API instead of real API
+export const useMockApi = true;
 
 // Mock API handlers
 const mockHandlers = {

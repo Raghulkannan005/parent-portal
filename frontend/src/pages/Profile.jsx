@@ -1,284 +1,364 @@
 import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { 
+  Person as PersonIcon,
+  Email as EmailIcon,
+  Phone as PhoneIcon,
+  Edit as EditIcon,
+  Save as SaveIcon,
+  Cancel as CancelIcon,
+} from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
+import { toast } from 'react-toastify';
 import api from '../utils/api';
 
-function Profile() {
+const Profile = () => {
   const { user } = useAuth();
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [changingPassword, setChangingPassword] = useState(false);
-  
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState({
     name: user?.name || '',
     email: user?.email || '',
-    phone: ''
-  });
-  
-  const [formErrors, setFormErrors] = useState({});
-  
-  const [passwordData, setPasswordData] = useState({
+    phone: user?.phone || '',
     currentPassword: '',
     newPassword: '',
     confirmPassword: '',
   });
-  
-  const [passwordErrors, setPasswordErrors] = useState({});
+  const [errors, setErrors] = useState({});
 
+  // Update form data when user changes
   useEffect(() => {
-    const fetchUserDetails = async () => {
-      setLoading(true);
-      try {
-        const response = await api.get(`/users/${user.id}`);
-        setFormData({
-          name: response.data.name,
-          email: response.data.email,
-          phone: response.data.phone || ''
-        });
-      } catch (error) {
-        console.error('Error fetching user details:', error);
-        alert('Could not load user profile');
-      } finally {
-        setLoading(false);
+    if (user) {
+      setFormData(prevData => ({
+        ...prevData,
+        name: user.name || '',
+        email: user.email || '',
+        phone: user.phone || '',
+      }));
+    }
+  }, [user]);
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData({
+      ...formData,
+      [name]: value,
+    });
+  };
+
+  const validateForm = () => {
+    const newErrors = {};
+    
+    if (!formData.name.trim()) {
+      newErrors.name = 'Name is required';
+    }
+    
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      newErrors.email = 'Please enter a valid email address';
+    }
+    
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Phone number is required';
+    }
+    
+    if (formData.newPassword) {
+      if (!formData.currentPassword) {
+        newErrors.currentPassword = 'Current password is required to set a new password';
       }
-    };
-    
-    fetchUserDetails();
-  }, [user.id]);
-
-  const validateProfileForm = () => {
-    const errors = {};
-    if (formData.name.length < 2) errors.name = 'Name must have at least 2 letters';
-    if (!/^\S+@\S+$/.test(formData.email)) errors.email = 'Invalid email';
-    if (!/^\d{10}$/.test(formData.phone)) errors.phone = 'Phone must be 10 digits';
-    
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-  
-  const validatePasswordForm = () => {
-    const errors = {};
-    if (passwordData.currentPassword.length < 6) {
-      errors.currentPassword = 'Password must be at least 6 characters';
-    }
-    if (passwordData.newPassword.length < 6) {
-      errors.newPassword = 'Password must be at least 6 characters';
-    }
-    if (passwordData.confirmPassword !== passwordData.newPassword) {
-      errors.confirmPassword = 'Passwords did not match';
-    }
-    
-    setPasswordErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const handleProfileUpdate = async (e) => {
-    e.preventDefault();
-    if (!validateProfileForm()) return;
-    
-    setSaving(true);
-    try {
-      await api.put(`/users/${user.id}`, formData);
-      alert('Profile updated successfully');
-    } catch (error) {
-      console.error('Error updating profile:', error);
-      alert('Failed to update profile');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handlePasswordSubmit = async (e) => {
-    e.preventDefault();
-    if (!validatePasswordForm()) return;
-    
-    setChangingPassword(true);
-    try {
-      await api.put(`/users/${user.id}/password`, {
-        currentPassword: passwordData.currentPassword,
-        newPassword: passwordData.newPassword,
-      });
       
-      alert('Password changed successfully');
+      if (formData.newPassword.length < 6) {
+        newErrors.newPassword = 'Password must be at least 6 characters';
+      }
       
-      setPasswordData({
+      if (formData.newPassword !== formData.confirmPassword) {
+        newErrors.confirmPassword = 'Passwords do not match';
+      }
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!validateForm()) return;
+    
+    setIsSaving(true);
+    try {
+      // Update profile information
+      const profileData = {
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+      };
+      
+      await api.put('/users/profile', profileData);
+      
+      // Update password if new password is provided
+      if (formData.newPassword) {
+        await api.put('/users/password', {
+          currentPassword: formData.currentPassword,
+          newPassword: formData.newPassword,
+        });
+      }
+      
+      toast.success('Profile updated successfully');
+      setIsEditing(false);
+      
+      // Reset password fields
+      setFormData({
+        ...formData,
         currentPassword: '',
         newPassword: '',
         confirmPassword: '',
       });
     } catch (error) {
-      console.error('Error changing password:', error);
-      alert(error.response?.data?.error || 'Failed to change password');
+      console.error('Error updating profile:', error);
+      
+      if (error.response?.data?.error) {
+        toast.error(error.response.data.error);
+      } else {
+        toast.error('Failed to update profile');
+      }
     } finally {
-      setChangingPassword(false);
+      setIsSaving(false);
     }
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-  
-  const handlePasswordChange = (e) => {
-    const { name, value } = e.target;
-    setPasswordData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+  const handleCancel = () => {
+    setIsEditing(false);
+    setErrors({});
+    
+    // Reset form data to current user data
+    setFormData({
+      name: user?.name || '',
+      email: user?.email || '',
+      phone: user?.phone || '',
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: '',
+    });
   };
 
   return (
-    <div className="container">
-      <h2 className="page-title">My Profile</h2>
-      
-      <div className="profile-layout">
-        <div className="profile-sidebar">
-          <div className="profile-card">
-            <div className="profile-avatar">
-              {user?.name?.charAt(0)}
+    <div className="space-y-6">
+      <h1 className="text-3xl font-bold text-gray-900">My Profile</h1>
+
+      <div className="card">
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center">
+            <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center text-primary-600 text-3xl mr-4">
+              {user?.name ? user.name.charAt(0).toUpperCase() : <PersonIcon fontSize="large" />}
             </div>
-            <h3 className="profile-name">{user?.name}</h3>
-            <p className="profile-email">{user?.email}</p>
-            <p className="profile-role">
-              {user?.role?.charAt(0).toUpperCase() + user?.role?.slice(1)}
-            </p>
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">{user?.name}</h2>
+              <p className="text-gray-500 capitalize">{user?.role || 'User'}</p>
+            </div>
           </div>
+          {!isEditing && (
+            <button 
+              onClick={() => setIsEditing(true)}
+              className="btn-secondary inline-flex items-center"
+            >
+              <EditIcon className="mr-2" />
+              Edit Profile
+            </button>
+          )}
         </div>
-        
-        <div className="profile-main">
-          <div className="card">
-            {loading && <div className="loading-overlay"><div className="spinner"></div></div>}
-            
-            <div className="card-header">
-              <h3>Account Details</h3>
+
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium text-gray-900">Personal Information</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+                    Full Name
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <PersonIcon className="text-gray-400" />
+                    </div>
+                    <input
+                      type="text"
+                      id="name"
+                      name="name"
+                      value={formData.name}
+                      onChange={handleInputChange}
+                      className={`input-field pl-10 ${errors.name ? 'border-red-500' : ''}`}
+                      placeholder="Your full name"
+                      disabled={!isEditing}
+                    />
+                  </div>
+                  {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name}</p>}
+                </div>
+
+                <div>
+                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+                    Email Address
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <EmailIcon className="text-gray-400" />
+                    </div>
+                    <input
+                      type="email"
+                      id="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      className={`input-field pl-10 ${errors.email ? 'border-red-500' : ''}`}
+                      placeholder="Your email address"
+                      disabled={!isEditing}
+                    />
+                  </div>
+                  {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
+                </div>
+
+                <div>
+                  <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone Number
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <PhoneIcon className="text-gray-400" />
+                    </div>
+                    <input
+                      type="tel"
+                      id="phone"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleInputChange}
+                      className={`input-field pl-10 ${errors.phone ? 'border-red-500' : ''}`}
+                      placeholder="Your phone number"
+                      disabled={!isEditing}
+                    />
+                  </div>
+                  {errors.phone && <p className="mt-1 text-sm text-red-600">{errors.phone}</p>}
+                </div>
+              </div>
             </div>
-            
-            <form onSubmit={handleProfileUpdate}>
-              <div className="form-group">
-                <label htmlFor="name">Name</label>
-                <input
-                  id="name"
-                  name="name"
-                  type="text"
-                  className={`form-input ${formErrors.name ? 'error' : ''}`}
-                  placeholder="Your full name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  required
-                />
-                {formErrors.name && <div className="error-message">{formErrors.name}</div>}
-              </div>
-              
-              <div className="form-group">
-                <label htmlFor="email">Email</label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  className={`form-input ${formErrors.email ? 'error' : ''}`}
-                  placeholder="Your email address"
-                  value={formData.email}
-                  onChange={handleChange}
-                  required
-                />
-                {formErrors.email && <div className="error-message">{formErrors.email}</div>}
-              </div>
-              
-              <div className="form-group">
-                <label htmlFor="phone">Phone</label>
-                <input
-                  id="phone"
-                  name="phone"
-                  type="text"
-                  className={`form-input ${formErrors.phone ? 'error' : ''}`}
-                  placeholder="Your phone number"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  required
-                />
-                {formErrors.phone && <div className="error-message">{formErrors.phone}</div>}
-              </div>
-              
-              <div className="form-actions">
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={saving}
-                >
-                  {saving ? 'Saving...' : 'Save Changes'}
-                </button>
-              </div>
-            </form>
+
+            {isEditing && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                className="space-y-4"
+              >
+                <h3 className="text-lg font-medium text-gray-900">Change Password</h3>
+                <p className="text-sm text-gray-500">Leave blank if you don't want to change your password</p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700 mb-1">
+                      Current Password
+                    </label>
+                    <input
+                      type="password"
+                      id="currentPassword"
+                      name="currentPassword"
+                      value={formData.currentPassword}
+                      onChange={handleInputChange}
+                      className={`input-field ${errors.currentPassword ? 'border-red-500' : ''}`}
+                      placeholder="Enter current password"
+                    />
+                    {errors.currentPassword && (
+                      <p className="mt-1 text-sm text-red-600">{errors.currentPassword}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700 mb-1">
+                      New Password
+                    </label>
+                    <input
+                      type="password"
+                      id="newPassword"
+                      name="newPassword"
+                      value={formData.newPassword}
+                      onChange={handleInputChange}
+                      className={`input-field ${errors.newPassword ? 'border-red-500' : ''}`}
+                      placeholder="Enter new password"
+                    />
+                    {errors.newPassword && (
+                      <p className="mt-1 text-sm text-red-600">{errors.newPassword}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
+                      Confirm New Password
+                    </label>
+                    <input
+                      type="password"
+                      id="confirmPassword"
+                      name="confirmPassword"
+                      value={formData.confirmPassword}
+                      onChange={handleInputChange}
+                      className={`input-field ${errors.confirmPassword ? 'border-red-500' : ''}`}
+                      placeholder="Confirm new password"
+                    />
+                    {errors.confirmPassword && (
+                      <p className="mt-1 text-sm text-red-600">{errors.confirmPassword}</p>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            )}
           </div>
-          
-          <div className="card mt-4">
-            <div className="card-header">
-              <h3>Change Password</h3>
-            </div>
-            
-            <form onSubmit={handlePasswordSubmit}>
-              <div className="form-group">
-                <label htmlFor="currentPassword">Current Password</label>
-                <input
-                  id="currentPassword"
-                  name="currentPassword"
-                  type="password"
-                  className={`form-input ${passwordErrors.currentPassword ? 'error' : ''}`}
-                  placeholder="Enter your current password"
-                  value={passwordData.currentPassword}
-                  onChange={handlePasswordChange}
-                  required
-                />
-                {passwordErrors.currentPassword && <div className="error-message">{passwordErrors.currentPassword}</div>}
-              </div>
+
+          {isEditing && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex justify-end space-x-4 mt-8"
+            >
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="btn-outline inline-flex items-center"
+                disabled={isSaving}
+              >
+                <CancelIcon className="mr-2" />
+                Cancel
+              </button>
               
-              <div className="form-group">
-                <label htmlFor="newPassword">New Password</label>
-                <input
-                  id="newPassword"
-                  name="newPassword"
-                  type="password"
-                  className={`form-input ${passwordErrors.newPassword ? 'error' : ''}`}
-                  placeholder="Enter your new password"
-                  value={passwordData.newPassword}
-                  onChange={handlePasswordChange}
-                  required
-                />
-                {passwordErrors.newPassword && <div className="error-message">{passwordErrors.newPassword}</div>}
-              </div>
-              
-              <div className="form-group">
-                <label htmlFor="confirmPassword">Confirm Password</label>
-                <input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  className={`form-input ${passwordErrors.confirmPassword ? 'error' : ''}`}
-                  placeholder="Confirm your new password"
-                  value={passwordData.confirmPassword}
-                  onChange={handlePasswordChange}
-                  required
-                />
-                {passwordErrors.confirmPassword && <div className="error-message">{passwordErrors.confirmPassword}</div>}
-              </div>
-              
-              <div className="form-actions">
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={changingPassword}
-                >
-                  {changingPassword ? 'Updating...' : 'Update Password'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+              <button
+                type="submit"
+                className="btn-primary inline-flex items-center"
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <>
+                    <span className="mr-2 animate-spin">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                    </span>
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <SaveIcon className="mr-2" />
+                    Save Changes
+                  </>
+                )}
+              </button>
+            </motion.div>
+          )}
+        </form>
       </div>
     </div>
   );
-}
+};
 
 export default Profile;
